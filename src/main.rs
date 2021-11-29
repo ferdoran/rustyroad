@@ -1,10 +1,8 @@
 use env_logger::{Target, WriteStyle};
 use log::LevelFilter;
-use rustyroad::net::server::{Server, ServerSignal};
-use crate::net::server::Server;
+use net::server::{Server, ServerSignal};
 
 mod net;
-
 #[macro_use]
 extern crate log;
 

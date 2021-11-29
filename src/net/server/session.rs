@@ -14,6 +14,7 @@ pub struct Session {
     pub id: Uuid
 }
 
+
 impl Session {
     pub fn new(id: Uuid) -> Session {
         return Session {id};

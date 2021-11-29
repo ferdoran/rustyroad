@@ -8,5 +8,14 @@ pub struct Server {
     listener: TcpListener,
     sessions: HashMap<Uuid, (Sender<[u8; BUFFER_SIZE]>, Receiver<[u8; BUFFER_SIZE]>)>,
 }
+
+pub enum ServerSignal {
+    Started,
+    Shutdown(String),
+    NewConnection(Uuid),
+    ClosedConnection(Uuid)
+}
+
+
 mod session;
 mod server;
