@@ -1,9 +1,10 @@
 use env_logger::{Target, WriteStyle};
 use log::LevelFilter;
-use rustyroad::net::server::server::{Server, ServerSignal};
+use rustyroad::net::server::{Server, ServerSignal};
 
 #[macro_use]
 extern crate log;
+
 
 #[tokio::main]
 async fn main() {

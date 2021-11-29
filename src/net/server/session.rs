@@ -75,14 +75,7 @@ impl Session {
                    }
                }
             }
-
-            dc_sender.send(sid).await;
         });
-        // self.interrupt_sender = Option::Some(interrupt_sender);
-
-        // let incoming_receiver = self.handle_incoming_data(read_half, interrupt_sender.clone());
-        // let outgoing_sender = self.handle_outgoing_data(write_half, interrupt_sender.clone());
-        // self.handle_interrupt(interrupt_receiver);
         return (outgoing_sender, incoming_receiver, interrupt_sender);
     }
 }
