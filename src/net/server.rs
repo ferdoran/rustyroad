@@ -6,15 +6,7 @@ use crate::net::server::session::BUFFER_SIZE;
 
 pub struct Server {
     listener: TcpListener,
-    sessions: HashMap<Uuid, (Sender<[u8; BUFFER_SIZE]>, Receiver<[u8; BUFFER_SIZE]>)>
+    sessions: HashMap<Uuid, (Sender<[u8; BUFFER_SIZE]>, Receiver<[u8; BUFFER_SIZE]>)>,
 }
-
-pub enum ServerSignal {
-    Started,
-    NewConnection(Uuid),
-    ClosedConnection(Uuid),
-    Shutdown(String)
-}
-
 mod session;
 mod server;
