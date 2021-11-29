@@ -3,6 +3,7 @@ use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use uuid::Uuid;
+use log::error;
 
 use crate::net::server::session::{BUFFER_SIZE, Session};
 
@@ -13,7 +14,8 @@ pub struct Server {
 
 pub enum ServerSignal {
     Started,
-    NewConnection(String),
+    NewConnection(Uuid),
+    ClosedConnection(Uuid),
     Shutdown(String)
 }
 
@@ -24,12 +26,12 @@ impl Server {
     }
 
     pub async fn start(mut self) -> Receiver<ServerSignal> {
-        let (disconnected_session_sender, mut disconnected_session_receiver) = mpsc::channel::<Uuid>(32);
         let (server_signal_sender, server_signal_receiver) = mpsc::channel::<ServerSignal>(2);
         tokio::spawn(async move {
+            let (disconnected_session_sender, mut disconnected_session_receiver) = mpsc::channel::<Uuid>(32);
             match server_signal_sender.send(ServerSignal::Started).await {
                 Ok(()) => {},
-                Err(err) => eprintln!("failed to send msg: {}", err)
+                Err(err) => error!("failed to send msg: {}", err)
             };
             loop {
                tokio::select! {
@@ -37,13 +39,14 @@ impl Server {
                        match conn_result {
                            Ok((stream, _)) => {
                                let sid = Uuid::new_v4();
-                               let mut session = Session::new(sid, disconnected_session_sender.clone());
-                               server_signal_sender.send(ServerSignal::NewConnection(format!("new connection from: {}", stream.peer_addr().unwrap().to_string())));
-                               let (out_channel_sender, in_channel_receiver) = session.start(stream).await;
+                               let session = Session::new(sid);
+                               server_signal_sender.send(ServerSignal::NewConnection(sid)).await;
+                               // TODO: do something with the channels
+                               let (out_channel_sender, in_channel_receiver, session_interrupt_sender) = session.start(stream, disconnected_session_sender.clone()).await;
                                self.sessions.insert(sid, (out_channel_sender, in_channel_receiver));
                            }
                            Err(err) => {
-                               let _ = server_signal_sender.send(ServerSignal::Shutdown(err.to_string()));
+                               server_signal_sender.send(ServerSignal::Shutdown(err.to_string())).await;
                                drop(server_signal_sender);
                                return;
                            }
@@ -52,7 +55,7 @@ impl Server {
                    dced_result = disconnected_session_receiver.recv() => {
                        match dced_result {
                            Some(sid) => {
-                               println!("session {} closed", sid.to_string());
+                               server_signal_sender.send(ServerSignal::ClosedConnection(sid)).await;
                                self.sessions.remove(&sid);
                            },
                            None => {}

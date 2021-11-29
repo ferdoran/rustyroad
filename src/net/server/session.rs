@@ -1,8 +1,9 @@
-use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
+use log::{debug, warn};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
+use tokio::select;
+use tokio::sync::{mpsc};
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 pub const BUFFER_SIZE: usize = 4096;
@@ -10,103 +11,79 @@ const INCOMING_CHANNEL_SIZE: usize = 32;
 const OUTGOING_CHANNEL_SIZE: usize = 32;
 
 pub struct Session {
-    pub id: Uuid,
-    dc_sender: Sender<Uuid>,
-    inc_handle: Option<JoinHandle<()>>,
-    out_handle: Option<JoinHandle<()>>
+    pub id: Uuid
 }
 
 impl Session {
-    pub fn new(id: Uuid, dc_sender: Sender<Uuid>) -> Session {
-        return Session {
-            id,
-            dc_sender,
-            inc_handle: Option::None,
-            out_handle: Option::None,
-        };
+    pub fn new(id: Uuid) -> Session {
+        return Session {id};
     }
 
-    pub async fn start(&mut self, stream: TcpStream) -> (Sender<[u8; BUFFER_SIZE]>, Receiver<[u8; BUFFER_SIZE]>) {
-        let (read_half, write_half) = tokio::io::split(stream);
-        let incoming_receiver = self.handle_incoming_data(read_half);
-        let outgoing_sender = self.handle_outgoing_data(write_half);
-
-        return (outgoing_sender, incoming_receiver);
-    }
-
-    fn handle_outgoing_data(&mut self, mut write_half: WriteHalf<TcpStream>) -> Sender<[u8; BUFFER_SIZE]> {
-        let (outgoing_sender, mut outgoing_receiver) = mpsc::channel::<[u8; BUFFER_SIZE]>(OUTGOING_CHANNEL_SIZE);
-        let sid = self.id.clone();
-        let dc_sender = self.dc_sender.clone();
-        self.out_handle = Option::Some(tokio::spawn(async move {
-            loop {
-                match outgoing_receiver.recv().await {
-                    Some(data) => {
-                        match write_half.write_all(&data).await {
-                            Ok(_) => {}
-                            Err(e) => {
-                                eprintln!("closing session {}: failed to write buffer: {}", sid, e);
-                                break;
-                            }
-                        };
-                    },
-                    None => {
-                        // stop handling outgoing data when outgoing channel is closed
-                        break;
-                    }
-                };
-            }
-            outgoing_receiver.close();
-            dc_sender.send(sid).await;
-            drop(outgoing_receiver);
-            drop(write_half);
-            drop(dc_sender);
-        }));
-
-        return outgoing_sender;
-    }
-
-    fn handle_incoming_data(&mut self, mut read_half: ReadHalf<TcpStream>) -> Receiver<[u8; BUFFER_SIZE]> {
+    pub async fn start(self, stream: TcpStream, dc_sender: Sender<Uuid>) -> (Sender<[u8; BUFFER_SIZE]>, Receiver<[u8; BUFFER_SIZE]>, Sender<()>) {
+        let (interrupt_sender, mut interrupt_receiver) = mpsc::channel::<()>(2);
         let (incoming_sender, incoming_receiver) = mpsc::channel::<[u8; BUFFER_SIZE]>(INCOMING_CHANNEL_SIZE);
-        let sid = self.id.clone();
-        let dc_sender = self.dc_sender.clone();
-        self.inc_handle = Option::Some(tokio::spawn(async move {
-            let mut buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
-
-            // In a loop, read data from the socket and write the data back.
+        let (outgoing_sender, mut outgoing_receiver) = mpsc::channel::<[u8; BUFFER_SIZE]>(OUTGOING_CHANNEL_SIZE);
+        let sid = self.id;
+        let (mut read_half, mut write_half) = tokio::io::split(stream);
+        tokio::spawn(async move {
             loop {
-                let n = match read_half.read(&mut buf).await {
-                    // socket closed
-                    Ok(n) if n == 0 => {
-                        println!("client terminated connection");
-                        break;
-                    },
-                    Ok(n) => n,
-                    Err(e) => {
-                        eprintln!("session {} failed to read from socket: {:?}", sid, e);
-                        break;
-                    }
-                };
-
-                println!("session {}: read {} bytes", sid, n);
-                incoming_sender.send(buf).await;
+               let mut read_buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+               select! {
+                   interrupted = interrupt_receiver.recv() => {
+                       match interrupted {
+                           Some(_) => {
+                               debug!("stopping session {}", sid);
+                               break;
+                           },
+                           None => {}
+                       }
+                   },
+                   read_result = read_half.read(&mut read_buf) => {
+                       let read_bytes = match read_result { // TODO: maybe add metrics for read_bytes in the future
+                           Ok(n) if n == 0 => {
+                               debug!("client terminated connection");
+                               break;
+                           },
+                           Ok(n) => {
+                               debug!("session {}: {:02X?}", sid, read_buf);
+                               incoming_sender.send(read_buf).await;
+                               n
+                           },
+                           Err(e) => {
+                               warn!("session {} failed to read from socket: {:?}", sid, e);
+                               break;
+                           }
+                       };
+                   },
+                   out_channel_result = outgoing_receiver.recv() => {
+                       match out_channel_result {
+                           Some(out_data) => {
+                               match write_half.write_all(&out_data).await {
+                                   Ok(_) => {},
+                                   Err(e) => {
+                                       warn!("closing session {}: failed to write buffer: {}", sid, e);
+                                       outgoing_receiver.close();
+                                       break;
+                                   }
+                               };
+                           },
+                           // stop handling when either incoming or outgoing channel is closed
+                           None => {
+                               break;
+                           }
+                       }
+                   }
+               }
             }
+
             dc_sender.send(sid).await;
-            drop(incoming_sender);
-            drop(read_half);
-            drop(dc_sender);
-        }));
+        });
+        // self.interrupt_sender = Option::Some(interrupt_sender);
 
-        return incoming_receiver;
-    }
-
-    pub async fn stop(mut self) {
-        self.dc_sender.send(self.id).await;
-        self.inc_handle.unwrap().abort();
-        self.out_handle.unwrap().abort();
-
-        self.inc_handle = Option::None;
-        self.out_handle = Option::None;
+        // let incoming_receiver = self.handle_incoming_data(read_half, interrupt_sender.clone());
+        // let outgoing_sender = self.handle_outgoing_data(write_half, interrupt_sender.clone());
+        // self.handle_interrupt(interrupt_receiver);
+        return (outgoing_sender, incoming_receiver, interrupt_sender);
     }
 }
 
