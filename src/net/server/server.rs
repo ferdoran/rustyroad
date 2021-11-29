@@ -1,22 +1,24 @@
 use std::collections::HashMap;
+
+use log::error;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use uuid::Uuid;
-use log::error;
 
-use crate::net::server::session::{BUFFER_SIZE, Session};
-
-pub struct Server {
-    listener: TcpListener,
-    sessions: HashMap<Uuid, (Sender<[u8; BUFFER_SIZE]>, Receiver<[u8; BUFFER_SIZE]>)>
-}
+use crate::net::server::server_signal::ServerSignal;
+use crate::net::server::session::BUFFER_SIZE;
 
 pub enum ServerSignal {
     Started,
     NewConnection(Uuid),
     ClosedConnection(Uuid),
     Shutdown(String)
+}
+
+pub struct Server {
+    listener: TcpListener,
+    sessions: HashMap<Uuid, (Sender<[u8; BUFFER_SIZE]>, Receiver<[u8; BUFFER_SIZE]>)>
 }
 
 impl Server {

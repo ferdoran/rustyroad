@@ -1,12 +1,9 @@
-use crate::net::server::server::ServerSignal;
-use crate::net::server::server::Server;
 use env_logger::{Target, WriteStyle};
 use log::LevelFilter;
+use rustyroad::net::server::server::{Server, ServerSignal};
 
 #[macro_use]
 extern crate log;
-
-mod net;
 
 #[tokio::main]
 async fn main() {
