@@ -16,6 +16,5 @@ pub enum ServerSignal {
     ClosedConnection(Uuid)
 }
 
-
 mod session;
 mod server;

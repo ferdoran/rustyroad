@@ -23,7 +23,7 @@ async fn main() {
             Some(signal) => {
                 match signal {
                     ServerSignal::Shutdown(msg) => {
-                        eprintln!("shutting down server: {}", msg);
+                        info!("shutting down server: {}", msg);
                         return;
                     },
                     ServerSignal::Started => info!("server started"),

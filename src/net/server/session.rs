@@ -14,14 +14,13 @@ pub struct Session {
     pub id: Uuid
 }
 
-
 impl Session {
     pub fn new(id: Uuid) -> Session {
         return Session {id};
     }
 
     pub async fn start(self, stream: TcpStream, dc_sender: Sender<Uuid>) -> (Sender<[u8; BUFFER_SIZE]>, Receiver<[u8; BUFFER_SIZE]>, Sender<()>) {
-        let (interrupt_sender, mut interrupt_receiver) = mpsc::channel::<()>(2);
+        let (interrupt_sender, mut interrupt_receiver) = mpsc::channel::<()>(1);
         let (incoming_sender, incoming_receiver) = mpsc::channel::<[u8; BUFFER_SIZE]>(INCOMING_CHANNEL_SIZE);
         let (outgoing_sender, mut outgoing_receiver) = mpsc::channel::<[u8; BUFFER_SIZE]>(OUTGOING_CHANNEL_SIZE);
         let sid = self.id;
@@ -76,7 +75,10 @@ impl Session {
                    }
                }
             }
+
+            dc_sender.send(sid).await;
         });
+
         return (outgoing_sender, incoming_receiver, interrupt_sender);
     }
 }

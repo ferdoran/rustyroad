@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
-use log::error;
 use tokio::net::TcpListener;
+use tokio::select;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::{Receiver};
+use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
+
 use crate::net::server::{Server, ServerSignal};
 use crate::net::server::session::Session;
 
@@ -16,14 +17,13 @@ impl Server {
 
     pub async fn start(mut self) -> Receiver<ServerSignal> {
         let (server_signal_sender, server_signal_receiver) = mpsc::channel::<ServerSignal>(2);
+
         tokio::spawn(async move {
             let (disconnected_session_sender, mut disconnected_session_receiver) = mpsc::channel::<Uuid>(32);
-            match server_signal_sender.send(ServerSignal::Started).await {
-                Ok(()) => {},
-                Err(err) => error!("failed to send msg: {}", err)
-            };
+            server_signal_sender.send(ServerSignal::Started).await;
+
             loop {
-               tokio::select! {
+                select! {
                    conn_result = self.listener.accept() => {
                        match conn_result {
                            Ok((stream, _)) => {
