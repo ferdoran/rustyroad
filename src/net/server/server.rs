@@ -35,6 +35,7 @@ impl Server {
 
             loop {
                 select! {
+                   // Handle either a connection or a disconnection, whatever occurs first
                    conn_result = self.listener.accept() => {
                        match conn_result {
                            Ok((stream, _)) => {

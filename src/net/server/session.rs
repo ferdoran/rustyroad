@@ -39,6 +39,7 @@ impl Session {
             loop {
                let mut read_buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
                select! {
+                   // Handle either an interruption, incoming data, or outgoing data, whatever occurs first
                    interrupted = interrupt_receiver.recv() => {
                        match interrupted {
                            Some(_) => {
