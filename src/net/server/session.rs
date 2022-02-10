@@ -10,15 +10,25 @@ pub const BUFFER_SIZE: usize = 4096;
 const INCOMING_CHANNEL_SIZE: usize = 32;
 const OUTGOING_CHANNEL_SIZE: usize = 32;
 
+/// An identified TCP client session
 pub struct Session {
     pub id: Uuid
 }
 
 impl Session {
+    /// Creates a new session given a [Uuid]
     pub fn new(id: Uuid) -> Session {
         return Session {id};
     }
 
+    /// Starts handling incoming and outgoing data.
+    ///
+    /// Returns a:
+    /// * [Sender] for sending data back to the client and
+    /// * [Receiver] to handle incoming data.
+    /// * [Sender] to interrupt or close the session.
+    ///
+    /// Be aware that it's a multi-producer-single-consumer channel.
     pub async fn start(self, stream: TcpStream, dc_sender: Sender<Uuid>) -> (Sender<[u8; BUFFER_SIZE]>, Receiver<[u8; BUFFER_SIZE]>, Sender<()>) {
         let (interrupt_sender, mut interrupt_receiver) = mpsc::channel::<()>(1);
         let (incoming_sender, incoming_receiver) = mpsc::channel::<[u8; BUFFER_SIZE]>(INCOMING_CHANNEL_SIZE);
@@ -39,15 +49,21 @@ impl Session {
                        }
                    },
                    read_result = read_half.read(&mut read_buf) => {
-                       let read_bytes = match read_result { // TODO: maybe add metrics for read_bytes in the future
+                       let _read_bytes = match read_result { // TODO: maybe add metrics for read_bytes in the future
                            Ok(n) if n == 0 => {
                                debug!("client terminated connection");
                                break;
                            },
                            Ok(n) => {
                                debug!("session {}: {:02X?}", sid, read_buf);
-                               incoming_sender.send(read_buf).await;
-                               n
+                               let send_result = incoming_sender.send(read_buf).await;
+                               match send_result {
+                                   Err(err) => {
+                                       error!("failed to send client {} incoming data ({} bytes) to channel", n, err);
+                                       break;
+                                   },
+                                   Ok(_) => n
+                               }
                            },
                            Err(e) => {
                                warn!("session {} failed to read from socket: {:?}", sid, e);
@@ -76,7 +92,10 @@ impl Session {
                }
             }
 
-            dc_sender.send(sid).await;
+            match dc_sender.send(sid).await {
+               Err(err) => warn!("failed to send disconnected client signal to channel: {}", err),
+               Ok(_) => {}
+            };
         });
 
         return (outgoing_sender, incoming_receiver, interrupt_sender);
