@@ -58,12 +58,9 @@ impl Server {
                        }
                    },
                    dced_result = disconnected_session_receiver.recv() => {
-                       match dced_result {
-                           Some(sid) => {
-                               handle_signal_result(server_signal_sender.send(ServerSignal::ClosedConnection(sid)).await);
-                               self.sessions.remove(&sid);
-                           },
-                           None => {}
+                       if let Some(sid) = dced_result {
+                           handle_signal_result(server_signal_sender.send(ServerSignal::ClosedConnection(sid)).await);
+                           self.sessions.remove(&sid);
                        }
                    }
                }
@@ -71,14 +68,13 @@ impl Server {
             }
         });
 
-        return server_signal_receiver;
+        server_signal_receiver
     }
 }
 
 /// Logs the failed signal as warning
 fn handle_signal_result(result: Result<(), SendError<ServerSignal>>) {
-    match result {
-        Ok(_) => {}
-        Err(err) => warn!("failed to send signal to server signal channel: {}", err)
-    };
+    if let Err(err) = result {
+        warn!("failed to send signal to server signal channel: {}", err);
+    }
 }

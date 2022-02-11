@@ -8,6 +8,7 @@ use prometheus::{Encoder, TextEncoder};
 use net::server::{Server, ServerSignal};
 
 mod net;
+
 #[macro_use]
 extern crate log;
 
@@ -20,7 +21,7 @@ async fn main() {
         .target(Target::Stdout)
         .write_style(WriteStyle::Always)
         .init();
-    let address = ":8080";
+    let address = "0.0.0.0:8080";
     let server = Server::new(address).await.unwrap();
     let mut server_signal_receiver = server.start().await;
     // TODO: add a hook to handle system signals e.g. for graceful shutdown
@@ -29,19 +30,16 @@ async fn main() {
 
     loop {
         // blocks the main process to handle server signals
-        match server_signal_receiver.recv().await {
-            Some(signal) => {
-                match signal {
-                    ServerSignal::Shutdown(msg) => {
-                        info!("shutting down server: {}", msg);
-                        return;
-                    },
-                    ServerSignal::Started => info!("server started listening on {}", address),
-                    ServerSignal::NewConnection(msg) => info!("new session: {}", msg.to_string()),
-                    ServerSignal::ClosedConnection(msg) => info!("closed session: {}", msg),
+        if let Some(signal) = server_signal_receiver.recv().await {
+            match signal {
+                ServerSignal::Shutdown(msg) => {
+                    info!("shutting down server: {}", msg);
+                    return;
                 }
+                ServerSignal::Started => info!("server started listening on {}", address),
+                ServerSignal::NewConnection(msg) => info!("new session: {}", msg.to_string()),
+                ServerSignal::ClosedConnection(msg) => info!("closed session: {}", msg),
             }
-            None => {}
         }
     }
 }

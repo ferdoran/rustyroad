@@ -6,8 +6,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::select;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::{Sender};
 use uuid::Uuid;
+use crate::net::server::SessionChannels;
 
 pub const BUFFER_SIZE: usize = 4096;
 const INCOMING_CHANNEL_SIZE: usize = 32;
@@ -20,13 +21,13 @@ lazy_static! {
 
 /// An identified TCP client session
 pub struct Session {
-    pub id: Uuid
+    pub id: Uuid,
 }
 
 impl Session {
     /// Creates a new session given a [Uuid]
     pub fn new(id: Uuid) -> Session {
-        return Session {id};
+        Session { id }
     }
 
     /// Starts handling incoming and outgoing data.
@@ -37,7 +38,7 @@ impl Session {
     /// * [Sender] to interrupt or close the session.
     ///
     /// Be aware that it's a multi-producer-single-consumer channel.
-    pub async fn start(self, stream: TcpStream, dc_sender: Sender<Uuid>) -> (Sender<[u8; BUFFER_SIZE]>, Receiver<[u8; BUFFER_SIZE]>, Sender<()>) {
+    pub async fn start(self, stream: TcpStream, dc_sender: Sender<Uuid>) -> SessionChannels {
         let (interrupt_sender, mut interrupt_receiver) = mpsc::channel::<()>(1);
         let (incoming_sender, incoming_receiver) = mpsc::channel::<[u8; BUFFER_SIZE]>(INCOMING_CHANNEL_SIZE);
         let (outgoing_sender, mut outgoing_receiver) = mpsc::channel::<[u8; BUFFER_SIZE]>(OUTGOING_CHANNEL_SIZE);
@@ -45,16 +46,13 @@ impl Session {
         let (mut read_half, mut write_half) = tokio::io::split(stream);
         tokio::spawn(async move {
             loop {
-               let mut read_buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
-               select! {
+                let mut read_buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+                select! {
                    // Handle either an interruption, incoming data, or outgoing data, whatever occurs first
                    interrupted = interrupt_receiver.recv() => {
-                       match interrupted {
-                           Some(_) => {
-                               debug!("stopping session {}", sid);
-                               break;
-                           },
-                           None => {}
+                       if interrupted.is_some() {
+                            debug!("stopping session {}", sid);
+                            break;
                        }
                    },
                    read_result = read_half.read(&mut read_buf) => {
@@ -102,14 +100,13 @@ impl Session {
                    }
                }
             }
-
-            match dc_sender.send(sid).await {
-               Err(err) => warn!("failed to send disconnected client signal to channel: {}", err),
-               Ok(_) => {}
-            };
+            if let Err(err) = dc_sender.send(sid).await {
+                warn!("failed to send disconnected client signal to channel: {}", err);
+            }
         });
 
-        return (outgoing_sender, incoming_receiver, interrupt_sender);
+
+        (interrupt_sender, outgoing_sender, incoming_receiver)
     }
 }
 
