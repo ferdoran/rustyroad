@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::Error;
+use prometheus::{register_int_counter, register_int_gauge};
 
 use tokio::net::TcpListener;
 use tokio::select;
@@ -28,11 +29,11 @@ impl Server {
     /// Returns a [Receiver] to inform about certain events.
     pub async fn start(mut self) -> Receiver<ServerSignal> {
         let (server_signal_sender, server_signal_receiver) = mpsc::channel::<ServerSignal>(2);
-
         tokio::spawn(async move {
             let (disconnected_session_sender, mut disconnected_session_receiver) = mpsc::channel::<Uuid>(32);
             handle_signal_result(server_signal_sender.send(ServerSignal::Started).await);
-
+            let sessions_gauge = register_int_gauge!("net_server_sessions", "current amount of sessions").expect("failed to register gauge net_server_sessions");
+            let failed_accepts_counter = register_int_counter!("net_server_failed_accepts", "total number of connections which the server could not accept due to an error").expect("failed to register counter net_server_failed_accepts");
             loop {
                 select! {
                    // Handle either a connection or a disconnection, whatever occurs first
@@ -51,6 +52,7 @@ impl Server {
                                // Failed to accept a connection
                                handle_signal_result(server_signal_sender.send(ServerSignal::Shutdown(err.to_string())).await);
                                drop(server_signal_sender);
+                               failed_accepts_counter.inc();
                                return;
                            }
                        }
@@ -65,6 +67,7 @@ impl Server {
                        }
                    }
                }
+               sessions_gauge.set(self.sessions.len() as i64)
             }
         });
 

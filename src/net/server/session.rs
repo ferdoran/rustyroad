@@ -1,4 +1,7 @@
+use lazy_static::lazy_static;
 use log::{debug, warn};
+use prometheus::{register_int_counter};
+use prometheus::core::{AtomicU64, GenericCounter};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::select;
@@ -9,6 +12,11 @@ use uuid::Uuid;
 pub const BUFFER_SIZE: usize = 4096;
 const INCOMING_CHANNEL_SIZE: usize = 32;
 const OUTGOING_CHANNEL_SIZE: usize = 32;
+
+lazy_static! {
+    static ref RECEIVED_BYTES_COUNTER: GenericCounter<AtomicU64> = register_int_counter!("net_server_received_bytes", "amount of received bytes").expect("failed to register counter net_server_received_bytes");
+    static ref SENT_BYTES_COUNTER: GenericCounter<AtomicU64> = register_int_counter!("net_server_sent_bytes", "amount of sent bytes").expect("failed to register counter net_server_sent_bytes");
+}
 
 /// An identified TCP client session
 pub struct Session {
@@ -50,7 +58,7 @@ impl Session {
                        }
                    },
                    read_result = read_half.read(&mut read_buf) => {
-                       let _read_bytes = match read_result { // TODO: maybe add metrics for read_bytes in the future
+                       let _read_bytes = match read_result {
                            Ok(n) if n == 0 => {
                                debug!("client terminated connection");
                                break;
@@ -71,6 +79,7 @@ impl Session {
                                break;
                            }
                        };
+                       RECEIVED_BYTES_COUNTER.inc_by(_read_bytes as u64);
                    },
                    out_channel_result = outgoing_receiver.recv() => {
                        match out_channel_result {
@@ -83,6 +92,7 @@ impl Session {
                                        break;
                                    }
                                };
+                               SENT_BYTES_COUNTER.inc_by(out_data.len() as u64);
                            },
                            // stop handling when either incoming or outgoing channel is closed
                            None => {
