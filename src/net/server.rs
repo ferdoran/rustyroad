@@ -5,7 +5,8 @@ use tokio::sync::mpsc::{Sender, Receiver};
 use crate::net::server::session::BUFFER_SIZE;
 
 /// A type definition holding a session's channels as triplet. Used for code simplification
-type SessionChannels = (Sender<()>, Sender<[u8; BUFFER_SIZE]>, Receiver<[u8; BUFFER_SIZE]>);
+type Packet = [u8; BUFFER_SIZE];
+type SessionChannels = (Sender<()>, Sender<Packet>, Receiver<Packet>);
 
 /// An async TCP server with session management capabilities
 pub struct Server {

@@ -9,8 +9,8 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
 
-use crate::net::server::{Server, ServerSignal};
 use crate::net::server::session::Session;
+use crate::{Server, ServerSignal};
 
 impl Server {
     /// Creates a new server instance for given address. Fails if binding is not successful
