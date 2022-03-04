@@ -1,14 +1,15 @@
 use lazy_static::lazy_static;
 use log::{debug, warn};
-use prometheus::{register_int_counter};
+use prometheus::register_int_counter;
 use prometheus::core::{AtomicU64, GenericCounter};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::select;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::{Sender};
+use tokio::sync::mpsc::Sender;
 use uuid::Uuid;
-use crate::net::server::SessionChannels;
+
+use crate::net::server::{Packet, SessionChannels};
 
 pub const BUFFER_SIZE: usize = 4096;
 const INCOMING_CHANNEL_SIZE: usize = 32;
@@ -38,9 +39,9 @@ impl Session {
     /// * [Sender] to interrupt or close the session.
     ///
     /// Be aware that it's a multi-producer-single-consumer channel.
-    pub async fn start(self, stream: TcpStream, dc_sender: Sender<Uuid>) -> SessionChannels {
+    pub async fn start(self, stream: TcpStream, dc_sender: Sender<Uuid>, message_sender: Sender<(Uuid, Packet)>) -> SessionChannels {
         let (interrupt_sender, mut interrupt_receiver) = mpsc::channel::<()>(1);
-        let (incoming_sender, incoming_receiver) = mpsc::channel::<[u8; BUFFER_SIZE]>(INCOMING_CHANNEL_SIZE);
+        let (_, _incoming_receiver) = mpsc::channel::<[u8; BUFFER_SIZE]>(INCOMING_CHANNEL_SIZE);
         let (outgoing_sender, mut outgoing_receiver) = mpsc::channel::<[u8; BUFFER_SIZE]>(OUTGOING_CHANNEL_SIZE);
         let sid = self.id;
         let (mut read_half, mut write_half) = tokio::io::split(stream);
@@ -62,8 +63,7 @@ impl Session {
                                break;
                            },
                            Ok(n) => {
-                               debug!("session {}: {:02X?}", sid, read_buf);
-                               let send_result = incoming_sender.send(read_buf).await;
+                               let send_result = message_sender.send((self.id, read_buf)).await;
                                match send_result {
                                    Err(err) => {
                                        error!("failed to send client {} incoming data ({} bytes) to channel", n, err);
@@ -106,7 +106,7 @@ impl Session {
         });
 
 
-        (interrupt_sender, outgoing_sender, incoming_receiver)
+        (interrupt_sender, outgoing_sender)
     }
 }
 

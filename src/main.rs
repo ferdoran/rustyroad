@@ -5,6 +5,8 @@ use hyper::{Body, Method, Request, Response, StatusCode};
 use hyper::service::{make_service_fn, service_fn};
 use log::LevelFilter;
 use prometheus::{Encoder, TextEncoder};
+use tokio_stream::StreamExt;
+use tokio_stream::wrappers::ReceiverStream;
 use net::server::{Engine, ServerSignal};
 
 mod net;
@@ -23,11 +25,20 @@ async fn main() {
         .init();
     let address = "0.0.0.0:8080";
     let server = Engine::new(address).await.unwrap();
-    let mut server_signal_receiver = server.start().await;
-    // TODO: add a hook to handle system signals e.g. for graceful shutdown
-
+    let (mut server_signal_receiver, packet_receiver) = server.start().await;
     tokio::spawn(serve_metrics());
-
+    tokio::spawn(async move {
+        // TODO: build a packet stream that does following in order
+        //  1) decrypt packet
+        //  2) verify checksum
+        //  3) unwrap massive packet
+        //  4) handle packet
+        // TODO: remove this example
+        let mut receiver_stream = ReceiverStream::new(packet_receiver);
+        while let Some((uuid, data)) = receiver_stream.next().await {
+            debug!("session {} received: {:02X?}", uuid.to_string(), data);
+        }
+    });
     loop {
         // blocks the main process to handle server signals
         if let Some(signal) = server_signal_receiver.recv().await {
@@ -37,11 +48,12 @@ async fn main() {
                     return;
                 }
                 ServerSignal::Started => info!("server started listening on {}", address),
-                ServerSignal::NewConnection(msg) => info!("new session: {}", msg.to_string()),
-                ServerSignal::ClosedConnection(msg) => info!("closed session: {}", msg),
+                ServerSignal::NewConnection(msg) => debug!("new session: {}", msg.to_string()),
+                ServerSignal::ClosedConnection(msg) => debug!("closed session: {}", msg),
             }
         }
     }
+    // TODO: add a hook to handle system signals e.g. for graceful shutdown
 }
 
 async fn serve_metrics() {
