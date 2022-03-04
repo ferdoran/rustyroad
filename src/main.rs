@@ -5,7 +5,7 @@ use hyper::{Body, Method, Request, Response, StatusCode};
 use hyper::service::{make_service_fn, service_fn};
 use log::LevelFilter;
 use prometheus::{Encoder, TextEncoder};
-use net::server::{Server, ServerSignal};
+use net::server::{Engine, ServerSignal};
 
 mod net;
 
@@ -22,7 +22,7 @@ async fn main() {
         .write_style(WriteStyle::Always)
         .init();
     let address = "0.0.0.0:8080";
-    let server = Server::new(address).await.unwrap();
+    let server = Engine::new(address).await.unwrap();
     let mut server_signal_receiver = server.start().await;
     // TODO: add a hook to handle system signals e.g. for graceful shutdown
 

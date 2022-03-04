@@ -10,14 +10,14 @@ use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
 
 use crate::net::server::session::Session;
-use crate::{Server, ServerSignal};
+use crate::{Engine, ServerSignal};
 
-impl Server {
+impl Engine {
     /// Creates a new server instance for given address. Fails if binding is not successful
-    pub async fn new(addr: &str) -> Result<Server, Error> {
+    pub async fn new(addr: &str) -> Result<Engine, Error> {
         let bind_result = TcpListener::bind(addr).await;
         return match bind_result {
-            Ok(listener) => Ok(Server { listener, sessions: HashMap::new() }),
+            Ok(listener) => Ok(Engine { listener, sessions: HashMap::new() }),
             Err(err) => {
                 error!("failed to bind to address {}", addr);
                 Err(err)

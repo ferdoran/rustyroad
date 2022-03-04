@@ -9,7 +9,7 @@ type Packet = [u8; BUFFER_SIZE];
 type SessionChannels = (Sender<()>, Sender<Packet>, Receiver<Packet>);
 
 /// An async TCP server with session management capabilities
-pub struct Server {
+pub struct Engine {
     listener: TcpListener,
     sessions: HashMap<Uuid, SessionChannels>,
 }
@@ -24,4 +24,4 @@ pub enum ServerSignal {
 }
 
 mod session;
-mod server;
+mod engine;
