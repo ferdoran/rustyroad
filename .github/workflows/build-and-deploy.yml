@@ -62,5 +62,6 @@ jobs:
             _devops/manifests/deployment.yaml
             _devops/manifests/service.yaml
           namespace: ${{ secrets.CLUSTER_NAMESPACE }}
-          images: "ferdoran/rustyroad:${{ github.sha }}"
+          images: |
+            ferdoran/rustyroad:${{ steps.docker_meta.outputs.version }}
           kubectl-version: "latest"
