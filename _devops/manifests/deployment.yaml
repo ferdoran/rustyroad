@@ -1,8 +1,6 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  labels:
-    app: rustyroad-deployment
   name: rustyroad-deployment
   namespace: rustyroad
 spec:
