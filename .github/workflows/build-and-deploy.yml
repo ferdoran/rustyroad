@@ -1,15 +1,12 @@
-name: Build and Publish Docker Image
-
+name: Deploy to Cluster
 on:
   push:
     branches:
-      - '**'
+      - 'master'
     tags:
       - 'v*.*.*'
-
-
 jobs:
-  build-and-publish:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -44,3 +41,24 @@ jobs:
           labels: ${{ steps.docker_meta.outputs.labels }}
       - name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: azure/setup-kubectl@v2.0
+        id: install
+      - uses: azure/k8s-set-context@v1
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+          cluster-type: generic
+        id: setcontext
+      - uses: azure/k8s-deploy@v1.5
+        with:
+          manifests: |
+            _devops/manifests/deployment.yaml
+            _devops/manifests/service.yaml
+          namespace: ${{ secrets.CLUSTER_NAMESPACE }}
+          images: "ferdoran/rustyroad:${{ steps.docker_meta.outputs.labels }}"
+          kubectl-version: "latest"

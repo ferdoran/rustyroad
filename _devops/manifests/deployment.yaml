@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: rustyroad-deployment
+  name: rustyroad-deployment
+  namespace: rustyroad
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rustyroad
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: rustyroad
+    spec:
+      containers:
+        - image: ferdoran/rustyroad:latest
+          imagePullPolicy: Always
+          name: rustyroad
+          ports:
+            - containerPort: 3000
+              name: http
+            - containerPort: 8080
+              name: sro
+          resources: {}
+status: {}
