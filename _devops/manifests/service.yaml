@@ -7,7 +7,7 @@ spec:
   selector:
       app: rustyroad
   ports:
-    - protocol: HTTP
+    - protocol: TCP
       port: 80
       targetPort: 3000
 ---
