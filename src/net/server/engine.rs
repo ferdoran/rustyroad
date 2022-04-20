@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::io::Error;
 
 use prometheus::{register_int_counter, register_int_gauge};
 use tokio::net::TcpListener;
@@ -10,28 +9,38 @@ use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
 
 use crate::{Engine, ServerSignal};
-use crate::net::server::Packet;
+use crate::net::server::{Packet};
 use crate::net::server::session::{BUFFER_SIZE, Session};
 
 impl Engine {
     /// Creates a new server instance for given address. Fails if binding is not successful
-    pub async fn new(addr: &str) -> Result<Engine, Error> {
-        let bind_result = TcpListener::bind(addr).await;
-        return match bind_result {
-            Ok(listener) => Ok(Engine {
-                listener,
-                sessions: HashMap::new(),
-            }),
-            Err(err) => {
-                error!("failed to bind to address {}", addr);
-                Err(err)
-            }
+    pub async fn new(opts: Vec<fn(&mut Engine)>) -> Engine {
+        let mut engine = Engine {
+            bind_host: "0.0.0.0",
+            bind_port: 8080,
+            sessions: HashMap::new()
         };
+
+        for opt in opts.iter() {
+            opt(&mut engine)
+        }
+
+        return engine;
     }
 
     /// Starts the handling of incoming connections.
     /// Returns a [Receiver] to inform about certain events.
-    pub async fn start(mut self) -> (Receiver<ServerSignal>, Receiver<(Uuid, Packet)>) {
+    pub async fn start(mut self) -> Result<(Receiver<ServerSignal>, Receiver<(Uuid, Packet)>), std::io::Error> {
+        let bind_result = TcpListener::bind(format!("{}:{}", self.bind_host, self.bind_port.to_string())).await;
+
+        if let Err(err) = bind_result {
+            return Err(err)
+        }
+
+        let listener = bind_result?;
+
+        info!("server started listening on {}:{}", self.bind_host, self.bind_port);
+
         let (server_signal_sender, server_signal_receiver) = mpsc::channel::<ServerSignal>(2);
         let (message_sender, message_receiver) = mpsc::channel::<(Uuid, Packet)>(BUFFER_SIZE);
         tokio::spawn(async move {
@@ -42,7 +51,7 @@ impl Engine {
             loop {
                 select! {
                    // Handle either a connection or a disconnection, whatever occurs first
-                   conn_result = self.listener.accept() => {
+                   conn_result = listener.accept() => {
                        match conn_result {
                            Ok((stream, _)) => {
                                // New client/connection
@@ -76,7 +85,7 @@ impl Engine {
         // TODO: Should message_receiver really be returned?
         //  Packets should rather be handled like a stream where different manipulations are applied
         //  (decryption, crc check, ...)
-        (server_signal_receiver, message_receiver)
+        Ok((server_signal_receiver, message_receiver))
     }
 }
 

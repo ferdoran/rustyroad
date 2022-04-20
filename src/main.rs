@@ -1,5 +1,6 @@
 use std::convert::Infallible;
 use std::net::SocketAddr;
+use std::path::Path;
 use env_logger::{Target, WriteStyle};
 use hyper::{Body, Method, Request, Response, StatusCode};
 use hyper::service::{make_service_fn, service_fn};
@@ -8,11 +9,17 @@ use prometheus::{Encoder, TextEncoder};
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::ReceiverStream;
 use net::server::{Engine, ServerSignal};
+use crate::pk2::archive::Archive;
+use crate::pk2::entry::EntryType;
+use crate::pk2::errors::Error;
 
 mod net;
+mod blowfish;
+mod pk2;
 
 #[macro_use]
 extern crate log;
+extern crate core;
 
 
 #[tokio::main]
@@ -23,9 +30,22 @@ async fn main() {
         .target(Target::Stdout)
         .write_style(WriteStyle::Always)
         .init();
-    let address = "0.0.0.0:8080";
-    let server = Engine::new(address).await.unwrap();
-    let (mut server_signal_receiver, packet_receiver) = server.start().await;
+    let file = String::from("/Users/rmu/workspaces/private/go-sro-agent-server/Data.pk2");
+    let mut archive = Archive::open(Path::new(&file)).unwrap();
+    match archive.index() {
+        Err(err) => {
+            let msg = match err {
+                Error::InvalidHeader(msg) => String::from(msg),
+                Error::IO(er) => er.to_string(),
+                Error::InvalidBlock(msg) => String::from(msg)
+            };
+            panic!("failed to index archive: {}", msg);
+        }
+        Ok(dir) => dir.print_entries()
+    };
+
+    let server = Engine::new(Vec::new()).await;
+    let (mut server_signal_receiver, packet_receiver) = server.start().await.unwrap();
     tokio::spawn(serve_metrics());
     tokio::spawn(async move {
         // TODO: build a packet stream that does following in order
@@ -47,9 +67,9 @@ async fn main() {
                     info!("shutting down server: {}", msg);
                     return;
                 }
-                ServerSignal::Started => info!("server started listening on {}", address),
                 ServerSignal::NewConnection(msg) => debug!("new session: {}", msg.to_string()),
                 ServerSignal::ClosedConnection(msg) => debug!("closed session: {}", msg),
+                ServerSignal::Started => {}
             }
         }
     }

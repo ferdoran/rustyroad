@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use tokio::net::TcpListener;
 use tokio::sync::mpsc::{Sender};
 use uuid::Uuid;
 
@@ -13,7 +12,8 @@ type SessionChannels = (Sender<()>, Sender<Packet>);
 
 /// An async TCP server with session management capabilities
 pub struct Engine {
-    listener: TcpListener,
+    bind_host: &'static str,
+    bind_port: u16,
     sessions: HashMap<Uuid, SessionChannels>,
 }
 
@@ -26,5 +26,8 @@ pub enum ServerSignal {
     ClosedConnection(Uuid)
 }
 
+// type ServerOpt = fn(&mut Engine);
+
 mod session;
 mod engine;
+mod options;
