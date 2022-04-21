@@ -1,9 +1,9 @@
-use crate::blowfish::Blowfish;
-use crate::pk2::constants::{CHECKSUM, HEADER_SIZE, KEY_BYTES, SALT, SIGNATURE, VERSION};
+use crate::pk2::constants::{BLOWFISH, CHECKSUM, HEADER_SIZE, SIGNATURE, VERSION};
 use crate::pk2::errors::Error;
 use crate::pk2::errors::Error::InvalidHeader;
 use crate::pk2::util::as_u32_le;
 
+/// Represents the raw header of a PK2 archive, which is used to verify the integrity of an archive.
 pub struct Header {
     signature: [u8; 30],
     version: u32,
@@ -49,9 +49,8 @@ impl Header {
             return Ok(());
         }
 
-        let bf = Blowfish::new(KEY_BYTES, SALT).unwrap();
         let mut encrypted_checksum = CHECKSUM.clone();
-        bf.encrypt(&mut encrypted_checksum);
+        BLOWFISH.encrypt(&mut encrypted_checksum);
 
         for i in 0..3 {
             if encrypted_checksum[i] != self.checksum[i] {

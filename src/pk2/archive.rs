@@ -1,20 +1,18 @@
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
-use std::os::unix::fs::FileExt;
+use std::io::{Read};
 use std::path::Path;
-use crate::blowfish::Blowfish;
-use crate::pk2::constants::{BLOCK_SIZE, ENTRY_SIZE, HEADER_SIZE, KEY_BYTES, SALT};
+
+use crate::pk2::constants::{HEADER_SIZE};
 use crate::pk2::directory::Directory;
-use crate::pk2::entry::Entry;
 use crate::pk2::errors::Error;
-use crate::pk2::errors::Error::{InvalidBlock, InvalidHeader, IO};
+use crate::pk2::errors::Error::{IO};
 use crate::pk2::header::Header;
 use crate::pk2::util::read_block;
 
+/// A structure to access an SRO PK2 archive.
 pub struct Archive {
     file: File,
-    bf: Blowfish,
-    pub entries: Vec<Entry>
+    pub root: Directory
 }
 
 impl From<File> for Archive {
@@ -27,7 +25,8 @@ impl From<File> for Archive {
                 }
                 let header = Header::from(header_buf);
                 header.verify().unwrap();
-                Archive{file, bf: Blowfish::new(KEY_BYTES, SALT).unwrap(), entries: Vec::new()}
+                let root = Archive::index(&file).expect("failed to index archive file");
+                Archive{file, root}
             }
             Err(err) => panic!("{}", err)
         }
@@ -35,6 +34,7 @@ impl From<File> for Archive {
 }
 
 impl Archive {
+    /// Opens the PK2 archive file at given path and creates an accessible instance
     pub fn open(file_path: &Path) -> Result<Archive, Error> {
         let file_result = File::open(file_path);
 
@@ -46,16 +46,14 @@ impl Archive {
         }
     }
 
-    pub fn index(&mut self) -> Result<Directory, Error> {
-        let entries = read_block(&mut self.file, HEADER_SIZE as u64)?;
-        let root_dir_entry = *entries.iter().find(|e| e.is_dir() && e.name[0] == 0x2e).unwrap();
+    /// Indexes all archive entries recursively
+    fn index(file: &File) -> Result<Directory, Error> {
+        let entries = read_block(file, HEADER_SIZE as u64)?;
+        // 0x2E -> "."
+        let mut root_dir_entry = *entries.iter().find(|e| e.is_dir() && e.name[0] == 0x2e).unwrap();
+        root_dir_entry.name[0] = 0;
         let mut root_dir = Directory::from(root_dir_entry);
-        root_dir.expand(&mut self.file)?;
-        self.entries = entries;
+        root_dir.expand(file)?;
         Ok(root_dir)
-    }
-
-    fn read_entries(&mut self) -> Result<Vec<Entry>, Error> {
-        read_block(&mut self.file, HEADER_SIZE as u64)
     }
 }

@@ -1,6 +1,10 @@
+extern crate core;
+#[macro_use]
+extern crate log;
+
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use std::path::Path;
+
 use env_logger::{Target, WriteStyle};
 use hyper::{Body, Method, Request, Response, StatusCode};
 use hyper::service::{make_service_fn, service_fn};
@@ -8,18 +12,12 @@ use log::LevelFilter;
 use prometheus::{Encoder, TextEncoder};
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::ReceiverStream;
+
 use net::server::{Engine, ServerSignal};
-use crate::pk2::archive::Archive;
-use crate::pk2::entry::EntryType;
-use crate::pk2::errors::Error;
 
 mod net;
 mod blowfish;
 mod pk2;
-
-#[macro_use]
-extern crate log;
-extern crate core;
 
 
 #[tokio::main]
@@ -30,19 +28,6 @@ async fn main() {
         .target(Target::Stdout)
         .write_style(WriteStyle::Always)
         .init();
-    let file = String::from("/Users/rmu/workspaces/private/go-sro-agent-server/Data.pk2");
-    let mut archive = Archive::open(Path::new(&file)).unwrap();
-    match archive.index() {
-        Err(err) => {
-            let msg = match err {
-                Error::InvalidHeader(msg) => String::from(msg),
-                Error::IO(er) => er.to_string(),
-                Error::InvalidBlock(msg) => String::from(msg)
-            };
-            panic!("failed to index archive: {}", msg);
-        }
-        Ok(dir) => dir.print_entries()
-    };
 
     let server = Engine::new(Vec::new()).await;
     let (mut server_signal_receiver, packet_receiver) = server.start().await.unwrap();

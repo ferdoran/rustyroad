@@ -1,11 +1,12 @@
 use std::fs::File;
 use std::os::unix::fs::FileExt;
-use crate::blowfish::Blowfish;
-use crate::Error;
-use crate::Error::{InvalidBlock, IO};
-use crate::pk2::constants::{BLOCK_SIZE, ENTRY_SIZE, KEY_BYTES, SALT};
-use crate::pk2::entry::Entry;
 
+use crate::pk2::constants::{BLOCK_SIZE, BLOWFISH, ENTRY_SIZE};
+use crate::pk2::entry::Entry;
+use crate::pk2::errors::Error;
+use crate::pk2::errors::Error::{InvalidBlock, IO};
+
+/// Converts a byte slice in little endian to an u32 number.
 pub fn as_u32_le(array: &[u8]) -> u32 {
     ((array[0] as u32) << 0) +
     ((array[1] as u32) << 8) +
@@ -13,7 +14,7 @@ pub fn as_u32_le(array: &[u8]) -> u32 {
     ((array[3] as u32) << 24)
 }
 
-
+/// Converts a byte slice in little endian to an u64 number.
 pub fn as_u64_le(array: &[u8]) -> u64 {
     ((array[0] as u64) << 0) +
     ((array[1] as u64) << 8) +
@@ -25,9 +26,9 @@ pub fn as_u64_le(array: &[u8]) -> u64 {
     ((array[7] as u64) << 56)
 }
 
-pub fn read_block(file: &mut File, offset: u64) -> Result<Vec<Entry>, Error> {
+/// Reads a block (see [BLOCK_SIZE]) in a PK2 archive and returns the entries.
+pub fn read_block(file: &File, offset: u64) -> Result<Vec<Entry>, Error> {
     let mut entry_buf: [u8; BLOCK_SIZE] = [0; BLOCK_SIZE];
-    let bf = Blowfish::new(KEY_BYTES, SALT).unwrap();
     match file.read_at(&mut entry_buf, offset) {
         Err(err) => return Err(IO(err)),
         Ok(read_bytes) => if read_bytes % ENTRY_SIZE != 0 {
@@ -35,7 +36,7 @@ pub fn read_block(file: &mut File, offset: u64) -> Result<Vec<Entry>, Error> {
         }
     }
 
-    bf.decrypt(&mut entry_buf);
+    BLOWFISH.decrypt(&mut entry_buf);
 
     let mut entries: Vec<Entry> = entry_buf.chunks_exact(ENTRY_SIZE)
         .map(|buf| Entry::from(buf))
