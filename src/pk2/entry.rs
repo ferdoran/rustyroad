@@ -45,7 +45,7 @@ pub struct Entry {
     create_time: u64,
     modify_time: u64,
     pub position: u64,
-    size: u32,
+    pub size: u32,
     pub next_chain: u64,
     padding: [u8; 2]
 }

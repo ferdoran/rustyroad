@@ -56,4 +56,9 @@ impl Archive {
         root_dir.expand(file)?;
         Ok(root_dir)
     }
+
+    /// Extracts the archive at given location
+    pub fn extract(&mut self, location: &Path) {
+        self.root.extract(location, &mut self.file);
+    }
 }

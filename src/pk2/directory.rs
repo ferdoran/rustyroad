@@ -1,8 +1,9 @@
 use std::collections::HashMap;
-use std::fs::{File};
-use std::path::{PathBuf};
+use std::fs::{create_dir_all, File};
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
 
-use crate::pk2::entry::{Entry};
+use crate::pk2::entry::Entry;
 use crate::pk2::errors::Error;
 use crate::pk2::util::read_block;
 
@@ -72,6 +73,37 @@ impl Directory {
             .filter(|(_, e)| e.is_file())
             .for_each(|(p, _)| {
                 info!("File: {:?}", p.as_path());
+            });
+    }
+
+    /// Extracts the directory at given location. Requires the file to read it.
+    pub fn extract(&self, location: &Path, file: &mut File) {
+        if !location.exists() {
+            create_dir_all(location).expect(format!("failed to create target directory {:?}", location).as_str());
+        }
+
+        self.entries.iter()
+            .filter(|(_p, e)| e.is_file())
+            .for_each(|(p, e)| {
+                file.seek(SeekFrom::Start(e.position)).expect("failed to move to entry's file offset");
+                let mut data_buf= vec![0u8; e.size as usize];
+                let bytes_read = file.read(&mut data_buf).expect("failed to read file content");
+                if bytes_read != e.size as usize {
+                    warn!("read {} bytes for entry although it has size {}", bytes_read, e.size);
+                }
+                let file_name = p.file_name().expect("failed to extract file name from its path");
+                let f_loc = location.join(file_name);
+                let mut f = File::create(&f_loc).expect(format!("failed to create file {:?}", f_loc).as_str());
+                f.write_all(&data_buf).expect("failed to write file data");
+            });
+
+        self.directories.iter()
+            .for_each(|(p, dir)| {
+                let new_loc = location.join(p);
+                if !new_loc.exists() {
+                    create_dir_all(&new_loc).expect(format!("failed to create target directory {:?}", &new_loc).as_str());
+                }
+                dir.extract(&new_loc, file);
             });
     }
 }
